@@ -4,6 +4,8 @@ import time
 import re
 import os
 
+print("BOT ARRANCOU", flush=True)
+
 TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
 TELEGRAM_CHAT_ID = "-1003746876578"
 
@@ -26,6 +28,7 @@ def save_seen(vin):
 
 
 def send_telegram(msg):
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
@@ -36,20 +39,20 @@ def send_telegram(msg):
 
     response = requests.post(url, data=data, timeout=20)
 
-    print("Telegram:", response.status_code)
-    print(response.text)
+    print("Telegram:", response.status_code, flush=True)
+    print(response.text, flush=True)
 
 
 seen = load_seen()
 
-print(f"VINs já conhecidos: {len(seen)}")
+print(f"VINs já conhecidos: {len(seen)}", flush=True)
 
 
 while True:
 
     try:
 
-        print("A abrir site da Tesla...")
+        print("A abrir site da Tesla...", flush=True)
 
         with sync_playwright() as p:
 
@@ -68,7 +71,7 @@ while True:
 
             page.goto(
                 TESLA_URL,
-                wait_until="networkidle",
+                wait_until="domcontentloaded",
                 timeout=60000
             )
 
@@ -82,7 +85,7 @@ while True:
 
         cars = list(set(cars))
 
-        print(f"Encontrados {len(cars)} carros")
+        print(f"Encontrados {len(cars)} carros", flush=True)
 
         for vin in cars:
 
@@ -100,16 +103,16 @@ while True:
 {link}
 """
 
-                print(msg)
+                print(msg, flush=True)
 
                 send_telegram(msg)
 
-        print("A aguardar 5 minutos...\n")
+        print("A aguardar 5 minutos...\n", flush=True)
 
         time.sleep(300)
 
     except Exception as e:
 
-        print("Erro:", e)
+        print("Erro:", e, flush=True)
 
         time.sleep(60)
