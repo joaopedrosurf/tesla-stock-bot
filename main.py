@@ -1,76 +1,66 @@
+from playwright.sync_api import sync_playwright
 import requests
 import time
+import json
+import re
 
 TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
 TELEGRAM_CHAT_ID = "-1003746876578"
 
-REFERRAL_LINK = "https://www.tesla.com/pt_pt/referral/joo39173"
-
 seen = set()
-
-headers = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json"
-}
 
 def send_telegram(msg):
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": msg
     }
 
-    requests.post(telegram_url, data=data)
+    requests.post(url, data=data)
 
 while True:
 
     try:
 
-        response = requests.get(
-            "https://www.tesla.com/inventory/api/v1/inventory-results",
-            headers=headers,
-            params={
-                "query": '{"model":"my","condition":"new","market":"PT","language":"pt","super_region":"europe","zip":"1000-000","range":0,"arrangeby":"Price","order":"asc"}'
-            }
-        )
+        with sync_playwright() as p:
 
-        print(response.status_code)
+            browser = p.chromium.launch(headless=True)
 
-        data = response.json()
+            page = browser.new_page()
 
-        results = data.get("results", [])
+            page.goto(
+                "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0"
+            )
 
-        print(f"Encontrados {len(results)} carros")
+            page.wait_for_timeout(5000)
 
-        for car in results:
+            content = page.content()
 
-            vin = car.get("VIN")
+            browser.close()
+
+        cars = re.findall(r'"/my/order/([^"]+)"', content)
+
+        for vin in cars:
 
             if vin not in seen:
 
                 seen.add(vin)
-
-                model = car.get("TrimName")
-                price = car.get("PurchasePrice")
 
                 link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral=joo39173"
 
                 msg = f"""
 🚗 Novo Tesla encontrado!
 
-Modelo: {model}
-
-Preço: €{price}
-
-Link:
 {link}
 """
 
                 print(msg)
 
                 send_telegram(msg)
+
+        print(f"Encontrados {len(cars)} carros")
 
         time.sleep(300)
 
