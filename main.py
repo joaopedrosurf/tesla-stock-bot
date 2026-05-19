@@ -2,7 +2,6 @@ from playwright.sync_api import sync_playwright
 import requests
 import time
 import os
-import json
 
 print("BOT ARRANCOU", flush=True)
 
@@ -29,7 +28,6 @@ def save_seen(vin):
 
 
 def send_telegram(msg):
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
@@ -38,8 +36,7 @@ def send_telegram(msg):
         "disable_web_page_preview": False
     }
 
-    response = requests.post(url, data=data)
-
+    response = requests.post(url, data=data, timeout=20)
     print("Telegram:", response.status_code, flush=True)
 
 
@@ -60,33 +57,59 @@ while True:
 
             browser = p.chromium.launch(
                 headless=True,
+                channel="chrome",
                 args=[
                     "--no-sandbox",
+                    "--disable-blink-features=AutomationControlled",
                     "--disable-dev-shm-usage"
                 ]
             )
 
-            page = browser.new_page()
+            context = browser.new_context(
+                viewport={"width": 1366, "height": 768},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                locale="pt-PT"
+            )
+
+            page = context.new_page()
+
+            page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            })
+            """)
 
             def handle_response(response):
-
-                global inventory_json
+                nonlocal_inventory = None
 
                 try:
-
                     url = response.url
 
                     if "inventory-results" in url:
-
                         print("API encontrada!", flush=True)
 
-                        inventory_json = response.json()
+                        nonlocal_inventory = response.json()
+
+                        return nonlocal_inventory
 
                 except Exception as e:
-
                     print("Erro response:", e, flush=True)
 
-            page.on("response", handle_response)
+            responses = []
+
+            def collect_response(response):
+                try:
+                    url = response.url
+
+                    if "inventory-results" in url:
+                        print("API encontrada!", flush=True)
+                        responses.append(response.json())
+
+                except Exception as e:
+                    print("Erro response:", e, flush=True)
+
+            page.on("response", collect_response)
 
             page.goto(
                 TESLA_URL,
@@ -94,21 +117,20 @@ while True:
                 timeout=60000
             )
 
-            page.wait_for_timeout(15000)
+            page.wait_for_timeout(20000)
 
             browser.close()
 
         cars = []
 
-        if inventory_json:
-
+        if responses:
+            inventory_json = responses[-1]
             results = inventory_json.get("results", [])
 
             for car in results:
-
                 vin = car.get("VIN")
 
-                if vin:
+                if vin and vin not in cars:
                     cars.append(vin)
 
         print(f"Encontrados {len(cars)} carros", flush=True)
@@ -118,7 +140,6 @@ while True:
             if vin not in seen:
 
                 seen.add(vin)
-
                 save_seen(vin)
 
                 link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral={REFERRAL}"
@@ -130,7 +151,6 @@ while True:
 """
 
                 print(msg, flush=True)
-
                 send_telegram(msg)
 
         print("A aguardar 5 minutos...\n", flush=True)
