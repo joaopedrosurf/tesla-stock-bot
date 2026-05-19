@@ -1,7 +1,6 @@
 from playwright.sync_api import sync_playwright
 import requests
 import time
-import re
 import os
 
 print("BOT ARRANCOU", flush=True)
@@ -28,7 +27,6 @@ def save_seen(vin):
 
 
 def send_telegram(msg):
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
@@ -75,15 +73,29 @@ while True:
                 timeout=60000
             )
 
-            page.wait_for_timeout(8000)
+            page.wait_for_timeout(12000)
 
-            content = page.content()
+            links = page.locator("a").evaluate_all(
+                "(elements) => elements.map(e => e.href)"
+            )
 
             browser.close()
 
-        cars = re.findall(r'"/my/order/([^"]+)"', content)
+        cars = []
 
-        cars = list(set(cars))
+        for link in links:
+
+            if "/my/order/" in link:
+
+                try:
+
+                    vin = link.split("/my/order/")[1].split("?")[0]
+
+                    if vin not in cars:
+                        cars.append(vin)
+
+                except:
+                    pass
 
         print(f"Encontrados {len(cars)} carros", flush=True)
 
@@ -92,7 +104,6 @@ while True:
             if vin not in seen:
 
                 seen.add(vin)
-
                 save_seen(vin)
 
                 link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral={REFERRAL}"
@@ -104,7 +115,6 @@ while True:
 """
 
                 print(msg, flush=True)
-
                 send_telegram(msg)
 
         print("A aguardar 5 minutos...\n", flush=True)
