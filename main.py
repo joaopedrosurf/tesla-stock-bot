@@ -3,7 +3,6 @@ import requests
 import time
 import os
 import re
-import json
 
 print("BOT ARRANCOU", flush=True)
 
@@ -13,10 +12,16 @@ TELEGRAM_CHAT_ID = "-1003746876578"
 REFERRAL = "joo39173"
 SEEN_FILE = "seen.txt"
 
-TESLA_URL = "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0"
+TESLA_URLS = [
+    "https://www.tesla.com/pt_PT/inventory/new/m3?arrangeby=plh&zip=1000-000&range=0",
+    "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0",
+    "https://www.tesla.com/pt_PT/inventory/new/ms?arrangeby=plh&zip=1000-000&range=0",
+    "https://www.tesla.com/pt_PT/inventory/new/mx?arrangeby=plh&zip=1000-000&range=0"
+]
 
 
 def load_seen():
+
     if not os.path.exists(SEEN_FILE):
         return set()
 
@@ -25,6 +30,7 @@ def load_seen():
 
 
 def save_seen(vin):
+
     with open(SEEN_FILE, "a") as f:
         f.write(vin + "\n")
 
@@ -39,7 +45,11 @@ def send_telegram(msg):
         "disable_web_page_preview": False
     }
 
-    response = requests.post(url, data=data, timeout=20)
+    response = requests.post(
+        url,
+        data=data,
+        timeout=20
+    )
 
     print("Telegram:", response.status_code, flush=True)
 
@@ -53,7 +63,7 @@ while True:
 
     try:
 
-        print("A abrir Tesla...", flush=True)
+        all_cars = []
 
         with sync_playwright() as p:
 
@@ -67,8 +77,9 @@ while True:
             )
 
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/125.0.0.0 Safari/537.36",
                 viewport={"width": 1366, "height": 768},
                 locale="pt-PT"
             )
@@ -81,25 +92,42 @@ while True:
             })
             """)
 
-            page.goto(
-                TESLA_URL,
-                wait_until="domcontentloaded",
-                timeout=60000
-            )
+            for url in TESLA_URLS:
 
-            page.wait_for_timeout(15000)
+                try:
 
-            html = page.content()
+                    print(f"A abrir: {url}", flush=True)
+
+                    page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=60000
+                    )
+
+                    page.wait_for_timeout(15000)
+
+                    html = page.content()
+
+                    vins = re.findall(r'5YJ[a-zA-Z0-9]{14}', html)
+
+                    vins = list(set(vins))
+
+                    print(f"Encontrados {len(vins)} VINs", flush=True)
+
+                    for vin in vins:
+
+                        if vin not in all_cars:
+                            all_cars.append(vin)
+
+                except Exception as e:
+
+                    print("Erro URL:", e, flush=True)
 
             browser.close()
 
-        vins = re.findall(r'5YJ[a-zA-Z0-9]{14}', html)
+        print(f"TOTAL carros encontrados: {len(all_cars)}", flush=True)
 
-        cars = list(set(vins))
-
-        print(f"Encontrados {len(cars)} carros", flush=True)
-
-        for vin in cars:
+        for vin in all_cars:
 
             if vin not in seen:
 
@@ -125,6 +153,6 @@ while True:
 
     except Exception as e:
 
-        print("Erro:", e, flush=True)
+        print("Erro geral:", e, flush=True)
 
         time.sleep(60)
