@@ -13,54 +13,58 @@ def send_telegram_message(message):
     data = {
         "chat_id": CHAT_ID,
         "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False
+        "parse_mode": "HTML"
     }
 
     requests.post(url, data=data)
 
 def check_tesla_stock():
-    url = "https://www.tesla.com/inventory/api/v1/inventory-results"
 
-    params = {
+    url = "https://www.tesla.com/inventory/api/v4/inventory-results"
+
+    payload = {
         "query": {
             "model": "my",
             "condition": "new",
-            "options": {},
             "arrangeby": "Price",
             "order": "asc",
             "market": "PT",
             "language": "pt",
             "super_region": "north america",
-            "lng": -8.0,
-            "lat": 39.5,
             "zip": "1000-001",
             "range": 0
         },
         "offset": 0,
-        "count": 20,
-        "outsideOffset": 0,
-        "outsideSearch": False
+        "count": 10
     }
 
-    response = requests.post(url, json=params)
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    print(response.text)
 
     data = response.json()
 
-    if "results" not in data:
-        print("Sem resultados.")
-        return
+    results = data.get("results", [])
 
-    for car in data["results"]:
-        vin = car["VIN"]
+    for car in results:
+
+        vin = car.get("VIN")
+
+        if not vin:
+            continue
 
         if vin in sent_cars:
             continue
 
         sent_cars.add(vin)
 
-        model = car.get("Model", "Tesla")
         price = car.get("TotalPrice", 0)
+
+        model = car.get("Model", "Tesla")
 
         link = f"https://www.tesla.com/pt_PT/my/order/{vin}"
 
@@ -68,16 +72,18 @@ def check_tesla_stock():
             f"🚗 <b>Novo Tesla em stock!</b>\n\n"
             f"Modelo: {model}\n"
             f"Preço: {price}€\n\n"
-            f"🔗 {link}"
+            f"{link}"
         )
 
         send_telegram_message(message)
 
-        print(f"Enviado: {vin}")
+        print("Enviado:", vin)
 
 while True:
+
     try:
         check_tesla_stock()
+
     except Exception as e:
         print("Erro:", e)
 
