@@ -1,8 +1,6 @@
-from playwright.sync_api import sync_playwright
 import requests
 import time
 import os
-import re
 
 print("BOT ARRANCOU", flush=True)
 
@@ -12,11 +10,11 @@ TELEGRAM_CHAT_ID = "-1003746876578"
 REFERRAL = "joo39173"
 SEEN_FILE = "seen.txt"
 
-TESLA_URLS = [
-    "https://www.tesla.com/pt_PT/inventory/new/m3?arrangeby=plh&zip=1000-000&range=0",
-    "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0",
-    "https://www.tesla.com/pt_PT/inventory/new/ms?arrangeby=plh&zip=1000-000&range=0",
-    "https://www.tesla.com/pt_PT/inventory/new/mx?arrangeby=plh&zip=1000-000&range=0"
+MODELS = [
+    "m3",
+    "my",
+    "ms",
+    "mx"
 ]
 
 
@@ -41,15 +39,10 @@ def send_telegram(msg):
 
     data = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": msg,
-        "disable_web_page_preview": False
+        "text": msg
     }
 
-    response = requests.post(
-        url,
-        data=data,
-        timeout=20
-    )
+    response = requests.post(url, data=data)
 
     print("Telegram:", response.status_code, flush=True)
 
@@ -59,93 +52,71 @@ seen = load_seen()
 print(f"VINs já conhecidos: {len(seen)}", flush=True)
 
 
+headers = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json"
+}
+
+
 while True:
 
     try:
 
-        all_cars = []
+        total = 0
 
-        with sync_playwright() as p:
+        for model in MODELS:
 
-            browser = p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled"
-                ]
-            )
+            try:
 
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/125.0.0.0 Safari/537.36",
-                viewport={"width": 1366, "height": 768},
-                locale="pt-PT"
-            )
+                url = f"https://www.tesla.com/inventory/api/v1/inventory-results?query={{\"query\":{{\"model\":\"{model}\",\"condition\":\"new\",\"options\":{{}},\"arrangeby\":\"plh\",\"order\":\"asc\",\"market\":\"PT\",\"language\":\"pt\",\"super_region\":\"north america\",\"lng\":\"-8.0\",\"lat\":\"39.5\",\"zip\":\"1000-000\",\"range\":0}},\"offset\":0,\"count\":24,\"outsideOffset\":0,\"outsideSearch\":false}}"
 
-            page = context.new_page()
+                print(f"A pedir {model}...", flush=True)
 
-            page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            })
-            """)
+                r = requests.get(
+                    url,
+                    headers=headers,
+                    timeout=30
+                )
 
-            for url in TESLA_URLS:
+                print(f"Status: {r.status_code}", flush=True)
 
-                try:
+                data = r.json()
 
-                    print(f"A abrir: {url}", flush=True)
+                results = data.get("results", [])
 
-                    page.goto(
-                        url,
-                        wait_until="domcontentloaded",
-                        timeout=60000
-                    )
+                print(f"{model}: {len(results)} carros", flush=True)
 
-                    page.wait_for_timeout(15000)
+                total += len(results)
 
-                    html = page.content()
+                for car in results:
 
-                    vins = re.findall(r'5YJ[a-zA-Z0-9]{14}', html)
+                    vin = car.get("VIN")
 
-                    vins = list(set(vins))
+                    if vin and vin not in seen:
 
-                    print(f"Encontrados {len(vins)} VINs", flush=True)
+                        seen.add(vin)
 
-                    for vin in vins:
+                        save_seen(vin)
 
-                        if vin not in all_cars:
-                            all_cars.append(vin)
+                        link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral={REFERRAL}"
 
-                except Exception as e:
-
-                    print("Erro URL:", e, flush=True)
-
-            browser.close()
-
-        print(f"TOTAL carros encontrados: {len(all_cars)}", flush=True)
-
-        for vin in all_cars:
-
-            if vin not in seen:
-
-                seen.add(vin)
-
-                save_seen(vin)
-
-                link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral={REFERRAL}"
-
-                msg = f"""
+                        msg = f"""
 🚗 Novo Tesla encontrado!
+
+Modelo: {model.upper()}
 
 {link}
 """
 
-                print(msg, flush=True)
+                        print(msg, flush=True)
 
-                send_telegram(msg)
+                        send_telegram(msg)
+
+            except Exception as e:
+
+                print(f"Erro modelo {model}:", e, flush=True)
+
+        print(f"TOTAL: {total} carros", flush=True)
 
         print("A aguardar 5 minutos...\n", flush=True)
 
