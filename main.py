@@ -1,51 +1,67 @@
 import requests
 import time
-import json
 
-url = "https://www.tesla.com/pt_pt/inventory/api/v1/inventory-results"
+TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
+TELEGRAM_CHAT_ID = "-1003746876578"
 
-payload = {
-    "query": {
-        "model": "my",
-        "condition": "new",
-        "options": {},
-        "arrangeby": "Price",
-        "order": "asc",
-        "market": "PT",
-        "language": "pt",
-        "super_region": "north america",
-        "lng": -8.0,
-        "lat": 39.5,
-        "zip": "1000-001",
-        "range": 0
-    },
-    "offset": 0,
-    "count": 10,
-    "outsideOffset": 0,
-    "outsideSearch": False
-}
+seen = set()
 
-headers = {
-    "User-Agent": "Mozilla/5.0",
-    "Content-Type": "application/json"
-}
+def send_telegram(msg):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": msg
+    }
+    requests.post(url, data=data)
 
 while True:
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        url = "https://www.tesla.com/inventory/api/v1/inventory-results"
 
-        print(response.status_code)
+        params = {
+            "query": {
+                "model": "my",
+                "condition": "new",
+                "arrangeby": "Price",
+                "order": "asc",
+                "market": "PT",
+                "language": "pt",
+                "super_region": "europe",
+                "lng": -8.0,
+                "lat": 39.5,
+                "zip": "1000-000",
+                "range": 0
+            }
+        }
 
+        response = requests.get(url, json=params)
         data = response.json()
 
         results = data.get("results", [])
 
-        print(f"Carros encontrados: {len(results)}")
-
         for car in results:
-            print(car.get("VIN"))
+            vin = car.get("VIN")
+
+            if vin not in seen:
+                seen.add(vin)
+
+                link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral=joo39173"
+
+                msg = f"""
+🚗 Novo Tesla encontrado!
+
+Modelo: {car.get('TrimName')}
+Preço: €{car.get('PurchasePrice')}
+
+Link:
+{link}
+"""
+
+                print(msg)
+                send_telegram(msg)
+
+        time.sleep(300)
 
     except Exception as e:
         print("Erro:", e)
-
-    time.sleep(60)
+        time.sleep(60)
