@@ -4,15 +4,17 @@ import time
 TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
 TELEGRAM_CHAT_ID = "-1003746876578"
 
+REFERRAL_LINK = "https://www.tesla.com/pt_pt/referral/joo39173"
+
 seen = set()
 
 headers = {
     "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json"
+    "Accept": "application/json",
+    "Content-Type": "application/json"
 }
 
 def send_telegram(msg):
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
@@ -23,7 +25,6 @@ def send_telegram(msg):
     requests.post(url, data=data)
 
 while True:
-
     try:
 
         url = "https://www.tesla.com/inventory/api/v1/inventory-results"
@@ -39,7 +40,9 @@ while True:
                 "range": 0,
                 "arrangeby": "Price",
                 "order": "asc"
-            }
+            },
+            "offset": 0,
+            "count": 24
         }
 
         response = requests.post(
@@ -54,8 +57,6 @@ while True:
 
         results = data.get("results", [])
 
-        print(f"Encontrados {len(results)} carros")
-
         for car in results:
 
             vin = car.get("VIN")
@@ -66,16 +67,12 @@ while True:
 
                 link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral=joo39173"
 
-                modelo = car.get("TrimName")
-                preco = car.get("PurchasePrice")
-
                 msg = f"""
 🚗 Novo Tesla encontrado!
 
-Modelo: {modelo}
-Preço: €{preco}
+Modelo: {car.get('TrimName')}
+Preço: €{car.get('PurchasePrice')}
 
-Link:
 {link}
 """
 
@@ -86,7 +83,5 @@ Link:
         time.sleep(300)
 
     except Exception as e:
-
         print("Erro:", e)
-
         time.sleep(60)
