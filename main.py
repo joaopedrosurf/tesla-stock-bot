@@ -2,15 +2,17 @@ from playwright.sync_api import sync_playwright
 import requests
 import time
 import os
+import json
 
 print("BOT ARRANCOU", flush=True)
 
 TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
 TELEGRAM_CHAT_ID = "-1003746876578"
 
-TESLA_URL = "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0"
 REFERRAL = "joo39173"
 SEEN_FILE = "seen.txt"
+
+TESLA_URL = "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0"
 
 
 def load_seen():
@@ -27,6 +29,7 @@ def save_seen(vin):
 
 
 def send_telegram(msg):
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
@@ -35,10 +38,9 @@ def send_telegram(msg):
         "disable_web_page_preview": False
     }
 
-    response = requests.post(url, data=data, timeout=20)
+    response = requests.post(url, data=data)
 
     print("Telegram:", response.status_code, flush=True)
-    print(response.text, flush=True)
 
 
 seen = load_seen()
@@ -50,7 +52,9 @@ while True:
 
     try:
 
-        print("A abrir site da Tesla...", flush=True)
+        inventory_json = None
+
+        print("A abrir Tesla...", flush=True)
 
         with sync_playwright() as p:
 
@@ -62,10 +66,27 @@ while True:
                 ]
             )
 
-            page = browser.new_page(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-            )
+            page = browser.new_page()
+
+            def handle_response(response):
+
+                global inventory_json
+
+                try:
+
+                    url = response.url
+
+                    if "inventory-results" in url:
+
+                        print("API encontrada!", flush=True)
+
+                        inventory_json = response.json()
+
+                except Exception as e:
+
+                    print("Erro response:", e, flush=True)
+
+            page.on("response", handle_response)
 
             page.goto(
                 TESLA_URL,
@@ -73,29 +94,22 @@ while True:
                 timeout=60000
             )
 
-            page.wait_for_timeout(12000)
-
-            links = page.locator("a").evaluate_all(
-                "(elements) => elements.map(e => e.href)"
-            )
+            page.wait_for_timeout(15000)
 
             browser.close()
 
         cars = []
 
-        for link in links:
+        if inventory_json:
 
-            if "/my/order/" in link:
+            results = inventory_json.get("results", [])
 
-                try:
+            for car in results:
 
-                    vin = link.split("/my/order/")[1].split("?")[0]
+                vin = car.get("VIN")
 
-                    if vin not in cars:
-                        cars.append(vin)
-
-                except:
-                    pass
+                if vin:
+                    cars.append(vin)
 
         print(f"Encontrados {len(cars)} carros", flush=True)
 
@@ -104,6 +118,7 @@ while True:
             if vin not in seen:
 
                 seen.add(vin)
+
                 save_seen(vin)
 
                 link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral={REFERRAL}"
@@ -115,6 +130,7 @@ while True:
 """
 
                 print(msg, flush=True)
+
                 send_telegram(msg)
 
         print("A aguardar 5 minutos...\n", flush=True)
