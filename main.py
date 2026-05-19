@@ -8,7 +8,8 @@ CHAT_ID = os.environ["CHAT_ID"]
 sent_cars = set()
 
 def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     data = {
         "chat_id": CHAT_ID,
@@ -16,7 +17,7 @@ def send_telegram_message(message):
         "parse_mode": "HTML"
     }
 
-    requests.post(url, data=data)
+    requests.post(telegram_url, data=data)
 
 def check_tesla_stock():
 
@@ -26,25 +27,37 @@ def check_tesla_stock():
         "query": {
             "model": "my",
             "condition": "new",
-            "arrangeby": "Price",
-            "order": "asc",
             "market": "PT",
             "language": "pt",
             "super_region": "north america",
             "zip": "1000-001",
-            "range": 0
+            "range": 0,
+            "arrangeby": "Price",
+            "order": "asc"
         },
         "offset": 0,
         "count": 10
     }
 
     headers = {
-        "Content-Type": "application/json"
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Origin": "https://www.tesla.com",
+        "Referer": "https://www.tesla.com/"
     }
 
-    response = requests.post(url, json=payload, headers=headers)
+    response = requests.post(
+        url,
+        json=payload,
+        headers=headers
+    )
 
+    print(response.status_code)
     print(response.text)
+
+    if response.status_code != 200:
+        return
 
     data = response.json()
 
@@ -62,9 +75,8 @@ def check_tesla_stock():
 
         sent_cars.add(vin)
 
-        price = car.get("TotalPrice", 0)
-
         model = car.get("Model", "Tesla")
+        price = car.get("TotalPrice", 0)
 
         link = f"https://www.tesla.com/pt_PT/my/order/{vin}"
 
@@ -72,7 +84,7 @@ def check_tesla_stock():
             f"🚗 <b>Novo Tesla em stock!</b>\n\n"
             f"Modelo: {model}\n"
             f"Preço: {price}€\n\n"
-            f"{link}"
+            f"🔗 {link}"
         )
 
         send_telegram_message(message)
