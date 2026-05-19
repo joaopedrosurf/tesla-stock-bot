@@ -2,7 +2,7 @@ import requests
 import time
 import os
 import re
-from html import unescape
+from bs4 import BeautifulSoup
 
 print("BOT ARRANCOU", flush=True)
 
@@ -16,6 +16,7 @@ TESLA_INFO_URL = "https://tesla-info.com/for-sale/Portugal/Any/New/?state=&miles
 
 
 def load_seen():
+
     if not os.path.exists(SEEN_FILE):
         return set()
 
@@ -24,11 +25,13 @@ def load_seen():
 
 
 def save_seen(car_id):
+
     with open(SEEN_FILE, "a") as f:
         f.write(car_id + "\n")
 
 
 def send_telegram(msg):
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     data = {
@@ -42,16 +45,14 @@ def send_telegram(msg):
     print("Telegram:", response.status_code, flush=True)
 
 
-def clean_text(text):
-    text = re.sub(r"<.*?>", " ", text)
-    text = unescape(text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
 seen = load_seen()
 
 print(f"Carros já conhecidos: {len(seen)}", flush=True)
+
+
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
 
 
 while True:
@@ -59,10 +60,6 @@ while True:
     try:
 
         print("A consultar Tesla-info...", flush=True)
-
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
 
         response = requests.get(
             TESLA_INFO_URL,
@@ -74,27 +71,36 @@ while True:
 
         html = response.text
 
-        order_links = re.findall(
-            r'https://www\.tesla\.com/pt_PT/[a-z0-9]+/order/[^"\s<]+',
-            html
-        )
+        soup = BeautifulSoup(html, "html.parser")
 
-        order_links = list(set(order_links))
+        links = soup.find_all("a", href=True)
 
-        print(f"Encontrados {len(order_links)} carros", flush=True)
+        tesla_links = []
 
-        for link in order_links:
+        for link in links:
 
-            link = unescape(link)
+            href = link["href"]
+
+            if "/order/" in href and "tesla.com" in href:
+
+                tesla_links.append(href)
+
+        tesla_links = list(set(tesla_links))
+
+        print(f"Encontrados {len(tesla_links)} carros", flush=True)
+
+        for link in tesla_links:
 
             car_id = link.split("/order/")[-1].split("?")[0]
 
             if car_id not in seen:
 
                 seen.add(car_id)
+
                 save_seen(car_id)
 
                 clean_link = link.split("?")[0]
+
                 referral_link = f"{clean_link}?referral={REFERRAL}"
 
                 msg = f"""
