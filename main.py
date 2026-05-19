@@ -1,11 +1,15 @@
 import requests
 import time
 
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
+
 while True:
     try:
         url = "https://query1.finance.yahoo.com/v8/finance/chart/TSLA"
 
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
 
         data = response.json()
 
