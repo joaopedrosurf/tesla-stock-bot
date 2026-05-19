@@ -1,102 +1,19 @@
 import requests
 import time
-import os
-
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
-
-sent_cars = set()
-
-def send_telegram_message(message):
-
-    telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    data = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-
-    requests.post(telegram_url, data=data)
-
-def check_tesla_stock():
-
-    url = "https://www.tesla.com/inventory/api/v4/inventory-results"
-
-    payload = {
-        "query": {
-            "model": "my",
-            "condition": "new",
-            "market": "PT",
-            "language": "pt",
-            "super_region": "north america",
-            "zip": "1000-001",
-            "range": 0,
-            "arrangeby": "Price",
-            "order": "asc"
-        },
-        "offset": 0,
-        "count": 10
-    }
-
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Origin": "https://www.tesla.com",
-        "Referer": "https://www.tesla.com/"
-    }
-
-    response = requests.post(
-        url,
-        json=payload,
-        headers=headers
-    )
-
-    print(response.status_code)
-    print(response.text)
-
-    if response.status_code != 200:
-        return
-
-    data = response.json()
-
-    results = data.get("results", [])
-
-    for car in results:
-
-        vin = car.get("VIN")
-
-        if not vin:
-            continue
-
-        if vin in sent_cars:
-            continue
-
-        sent_cars.add(vin)
-
-        model = car.get("Model", "Tesla")
-        price = car.get("TotalPrice", 0)
-
-        link = f"https://www.tesla.com/pt_PT/my/order/{vin}"
-
-        message = (
-            f"🚗 <b>Novo Tesla em stock!</b>\n\n"
-            f"Modelo: {model}\n"
-            f"Preço: {price}€\n\n"
-            f"🔗 {link}"
-        )
-
-        send_telegram_message(message)
-
-        print("Enviado:", vin)
 
 while True:
-
     try:
-        check_tesla_stock()
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/TSLA"
+
+        response = requests.get(url)
+
+        data = response.json()
+
+        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+
+        print(f"Tesla stock price: ${price}")
 
     except Exception as e:
-        print("Erro:", e)
+        print("Error:", e)
 
-    time.sleep(300)
+    time.sleep(60)
