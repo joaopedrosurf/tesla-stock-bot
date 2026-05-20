@@ -3,9 +3,8 @@ import requests
 import time
 import os
 import re
-from html import unescape
 
-print("BOT ARRANCOU - VERSAO TESLA-INFO PLAYWRIGHT", flush=True)
+print("BOT ARRANCOU NO MAC", flush=True)
 
 TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
 TELEGRAM_CHAT_ID = "-1003746876578"
@@ -13,7 +12,12 @@ TELEGRAM_CHAT_ID = "-1003746876578"
 REFERRAL = "joo39173"
 SEEN_FILE = "seen.txt"
 
-TESLA_INFO_URL = "https://tesla-info.com/for-sale/Portugal/Any/New/?state=&miles=99999&max=9999999&year=20082026&sortsale=256&token=524288&spec=0&adv=0&minrange=0"
+TESLA_URLS = [
+    ("Model 3", "https://www.tesla.com/pt_PT/inventory/new/m3?arrangeby=plh&zip=1000-000&range=0"),
+    ("Model Y", "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0"),
+    ("Model S", "https://www.tesla.com/pt_PT/inventory/new/ms?arrangeby=plh&zip=1000-000&range=0"),
+    ("Model X", "https://www.tesla.com/pt_PT/inventory/new/mx?arrangeby=plh&zip=1000-000&range=0")
+]
 
 
 def load_seen():
@@ -23,104 +27,93 @@ def load_seen():
         return set(line.strip() for line in f if line.strip())
 
 
-def save_seen(car_id):
+def save_seen(vin):
     with open(SEEN_FILE, "a") as f:
-        f.write(car_id + "\n")
+        f.write(vin + "\n")
 
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
     data = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": msg,
         "disable_web_page_preview": False
     }
+
     response = requests.post(url, data=data, timeout=20)
     print("Telegram:", response.status_code, flush=True)
 
 
-def make_referral_link(link):
-    link = unescape(link)
-    link = link.split("?")[0]
-    return f"{link}?referral={REFERRAL}"
-
-
 seen = load_seen()
-print(f"Carros já conhecidos: {len(seen)}", flush=True)
+print(f"VINs já conhecidos: {len(seen)}", flush=True)
 
 
 while True:
     try:
-        print("A abrir Tesla-info com browser...", flush=True)
+        all_cars = []
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,
+                headless=False,
                 args=[
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage"
+                    "--disable-blink-features=AutomationControlled"
                 ]
             )
 
-            page = browser.new_page(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            context = browser.new_context(
+                viewport={"width": 1400, "height": 900},
+                locale="pt-PT"
             )
 
-            page.goto(
-                TESLA_INFO_URL,
-                wait_until="domcontentloaded",
-                timeout=60000
-            )
+            page = context.new_page()
 
-            page.wait_for_timeout(15000)
+            for model_name, url in TESLA_URLS:
+                print(f"A abrir {model_name}...", flush=True)
 
-            html = page.content()
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(15000)
 
-            hrefs = page.locator("a").evaluate_all(
-                "els => els.map(a => a.href)"
-            )
+                html = page.content()
+
+                vins = re.findall(r'[A-Z0-9]{5,}_[a-zA-Z0-9]{20,}', html)
+                vins += re.findall(r'5YJ[a-zA-Z0-9]{14}', html)
+                vins += re.findall(r'7SA[a-zA-Z0-9]{14}', html)
+
+                vins = list(set(vins))
+
+                print(f"{model_name}: encontrados {len(vins)} carros", flush=True)
+
+                for vin in vins:
+                    all_cars.append((model_name, vin))
 
             browser.close()
 
-        links = []
+        print(f"TOTAL encontrados: {len(all_cars)}", flush=True)
 
-        for href in hrefs:
-            if "tesla.com" in href and "/order/" in href:
-                links.append(href)
+        for model_name, vin in all_cars:
+            if vin not in seen:
+                seen.add(vin)
+                save_seen(vin)
 
-        html_links = re.findall(
-            r'https://www\.tesla\.com/pt_PT/[a-z0-9]+/order/[^"\s<]+',
-            html
-        )
-
-        for link in html_links:
-            links.append(link)
-
-        links = list(set(links))
-
-        print(f"Encontrados {len(links)} carros", flush=True)
-
-        for link in links:
-            car_id = link.split("/order/")[-1].split("?")[0]
-
-            if car_id not in seen:
-                seen.add(car_id)
-                save_seen(car_id)
-
-                referral_link = make_referral_link(link)
+                if "_" in vin:
+                    model_code = model_name.lower().replace("model ", "m")
+                    link = f"https://www.tesla.com/pt_PT/{model_code}/order/{vin}?referral={REFERRAL}"
+                else:
+                    link = f"https://www.tesla.com/pt_PT/my/order/{vin}?referral={REFERRAL}"
 
                 msg = f"""
 🚗 Novo Tesla encontrado!
 
-{referral_link}
+Modelo: {model_name}
+
+{link}
 """
 
                 print(msg, flush=True)
                 send_telegram(msg)
 
         print("A aguardar 5 minutos...\n", flush=True)
-
         time.sleep(300)
 
     except Exception as e:
