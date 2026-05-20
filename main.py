@@ -1,125 +1,88 @@
-from playwright.sync_api import sync_playwright
-import requests
 import time
-import os
-import re
+import requests
+from bs4 import BeautifulSoup
+from plyer import notification
+import webbrowser
 
-print("BOT ARRANCOU NO MAC", flush=True)
+BOT_TOKEN = "TEU_TOKEN"
+CHAT_ID = "TEU_CHAT_ID"
 
-TELEGRAM_TOKEN = "8959555460:AAGEXGzl4ryc3VSNQKJhHl5SRvXTX32SrNk"
-TELEGRAM_CHAT_ID = "-1003746876578"
+vistos = set()
 
-REFERRAL = "joo39173"
-SEEN_FILE = "seen.txt"
+modelos = {
+    "Model 3": "https://www.tesla.com/pt_PT/inventory/new/m3?arrangeby=plh&zip=1000-000&range=0",
+    "Model Y": "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0",
+    "Model S": "https://www.tesla.com/pt_PT/inventory/new/ms?arrangeby=plh&zip=1000-000&range=0",
+    "Model X": "https://www.tesla.com/pt_PT/inventory/new/mx?arrangeby=plh&zip=1000-000&range=0"
+}
 
-TESLA_URLS = [
-    ("Model 3", "m3", "https://www.tesla.com/pt_PT/inventory/new/m3?arrangeby=plh&zip=1000-000&range=0"),
-    ("Model Y", "my", "https://www.tesla.com/pt_PT/inventory/new/my?arrangeby=plh&zip=1000-000&range=0"),
-    ("Model S", "ms", "https://www.tesla.com/pt_PT/inventory/new/ms?arrangeby=plh&zip=1000-000&range=0"),
-    ("Model X", "mx", "https://www.tesla.com/pt_PT/inventory/new/mx?arrangeby=plh&zip=1000-000&range=0")
-]
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
 
-
-def load_seen():
-    if not os.path.exists(SEEN_FILE):
-        return set()
-    with open(SEEN_FILE, "r") as f:
-        return set(line.strip() for line in f if line.strip())
-
-
-def save_seen(car_id):
-    with open(SEEN_FILE, "a") as f:
-        f.write(car_id + "\n")
-
-
-def send_telegram(msg):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+def enviar_telegram(msg):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": msg,
-        "disable_web_page_preview": False
+        "chat_id": CHAT_ID,
+        "text": msg
     }
-    response = requests.post(url, data=data, timeout=20)
-    print("Telegram:", response.status_code, flush=True)
+    requests.post(url, data=data)
 
-
-seen = load_seen()
-print(f"Carros já conhecidos: {len(seen)}", flush=True)
-
+print("BOT ARRANCOU NO MAC")
+print("VINs já conhecidos:", len(vistos))
 
 while True:
-    try:
-        all_cars = []
+    total = 0
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=False,
-                args=["--disable-blink-features=AutomationControlled"]
-            )
+    for nome, url in modelos.items():
+        try:
+            print(f"A abrir {nome}...")
 
-            context = browser.new_context(
-                viewport={"width": 1400, "height": 900},
-                locale="pt-PT"
-            )
+            resposta = requests.get(url, headers=headers)
+            html = resposta.text
 
-            page = context.new_page()
+            soup = BeautifulSoup(html, "html.parser")
 
-            for model_name, model_code, url in TESLA_URLS:
-                print(f"A abrir {model_name}...", flush=True)
+            links = soup.find_all("a")
 
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_timeout(20000)
+            encontrados = 0
 
-                links = page.locator("a").evaluate_all(
-                    """
-                    els => els
-                        .map(a => a.href)
-                        .filter(h => h.includes('/order/'))
-                    """
-                )
+            for link in links:
+                href = link.get("href")
 
-                html = page.content()
+                if href and "/order/" in href:
 
-                html_links = re.findall(
-                    r'https://www\.tesla\.com/pt_PT/[a-z0-9]+/order/[^"\\s<]+',
-                    html
-                )
+                    link_final = "https://www.tesla.com" + href.split("?")[0]
 
-                links = list(set(links + html_links))
+                    if link_final not in vistos:
+                        vistos.add(link_final)
 
-                print(f"{model_name}: encontrados {len(links)} carros", flush=True)
+                        encontrados += 1
+                        total += 1
 
-                for link in links:
-                    clean_link = link.split("?")[0]
-                    car_id = clean_link.split("/order/")[-1]
+                        mensagem = f"""🚗 Novo {nome} em inventário!
 
-                    all_cars.append((model_name, model_code, car_id, clean_link))
-
-            browser.close()
-
-        print(f"TOTAL encontrados: {len(all_cars)}", flush=True)
-
-        for model_name, model_code, car_id, clean_link in all_cars:
-            if car_id not in seen:
-                seen.add(car_id)
-                save_seen(car_id)
-
-                referral_link = f"{clean_link}?referral={REFERRAL}"
-
-                msg = f"""
-🚗 Novo Tesla encontrado!
-
-Modelo: {model_name}
-
-{referral_link}
+{link_final}
 """
 
-                print(msg, flush=True)
-                send_telegram(msg)
+                        print(mensagem)
 
-        print("A aguardar 5 minutos...\n", flush=True)
-        time.sleep(300)
+                        enviar_telegram(mensagem)
 
-    except Exception as e:
-        print("Erro geral:", e, flush=True)
-        time.sleep(60)
+                        notification.notify(
+                            title=f"Novo {nome}",
+                            message="Novo Tesla encontrado!",
+                            timeout=5
+                        )
+
+                        webbrowser.open(link_final)
+
+            print(f"{nome}: encontrados {encontrados} carros")
+
+        except Exception as e:
+            print("Erro:", e)
+
+    print("TOTAL encontrados:", total)
+    print("A aguardar 5 minutos...\n")
+
+    time.sleep(300)
